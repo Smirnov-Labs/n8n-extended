@@ -1,0 +1,46 @@
+name: Build & Push n8n-custom
+
+on:
+  workflow_dispatch:
+    inputs:
+      n8n_version:
+        description: "n8n tag to build (e.g. 1.42.2)"
+        required: true
+  schedule:                                # weekly rebuild to catch upstream tags
+    - cron: "0 3 * * 1"
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/n8n-extended
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:                           # needed for ghcr push
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version
+        id: vars
+        run: |
+          echo "N8N_VER=${{ github.event.inputs.n8n_version || 'latest' }}" >> $GITHUB_OUTPUT
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v5
+        with:
+          build-args: N8N_VERSION=${{ steps.vars.outputs.N8N_VER }}
+          context: .
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.N8N_VER }}
+            ${{ env.IMAGE_NAME }}:latest
+          push: true
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:cache
+          cache-to:   type=registry,ref=${{ env.IMAGE_NAME }}:cache,mode=max
